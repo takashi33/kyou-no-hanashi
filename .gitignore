@@ -1,0 +1,6 @@
+# 🚨 ここは公開リポジトリ。設計文書は非公開側（game/docs/mother-interview/）に置く。
+*.md
+
+# 🚨 母の語りは、いかなる形でもここに置かない。
+answers/
+*.json

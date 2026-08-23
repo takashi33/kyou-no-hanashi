@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>きょうの話</title>
+<meta name="theme-color" content="#f7f2e8">
+<meta name="robots" content="noindex, nofollow">
+<link rel="manifest" href="data:application/manifest+json;charset=utf-8;base64,ewogICJuYW1lIjogIuOBjeOCh+OBhuOBrivoqbEiLAogICJzaG9ydF9uYW1lIjogIuOBjeOCh+OBhuOBruipsSIsCiAgInN0YXJ0X3VybCI6ICIuIiwKICAiZGlzcGxheSI6ICJzdGFuZGFsb25lIiwKICAiYmFja2dyb3VuZF9jb2xvciI6ICIjZjdmMmU4IiwKICAidGhlbWVfY29sb3IiOiAiI2Y3ZjJlOCIsCiAgImxhbmciOiAiamEiCn0K">
+<style>
+  /* 🚨 72歳・杖・老眼に合わせる。文字を大きく、押す所を大きく、色の差をはっきり。
+     ⚠️ 薄い灰色の文字を使わない。読めない。 */
+  :root {
+    --bg: #f7f2e8;        /* 生成り */
+    --ink: #241f1a;       /* 黒に近い茶。真っ黒よりまぶしくない */
+    --line: #d8cdb8;
+    --card: #fffdf8;
+    --accent: #7a5c2e;    /* 押せる所 */
+    --accent-ink: #ffffff;
+    --owner: #1e3a5f;     /* 息子用の画面。母の画面と色を変える */
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html { font-size: 20px; }
+  body {
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--ink);
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", system-ui, sans-serif;
+    line-height: 1.7;
+    -webkit-text-size-adjust: 100%;
+  }
+  .wrap { max-width: 560px; margin: 0 auto; padding: 20px 18px 40px; }
+
+  header { padding: 14px 18px 0; max-width: 560px; margin: 0 auto; }
+  #appName {
+    font-size: 0.95rem; color: #6b5f4d; letter-spacing: .08em;
+    user-select: none; cursor: default;
+  }
+
+  h1 { font-size: 1.35rem; font-weight: 700; margin: 8px 0 22px; line-height: 1.55; }
+
+  /* 問いのボタン。3つ並ぶ。 */
+  .q {
+    display: block; width: 100%; text-align: left;
+    background: var(--card); color: var(--ink);
+    border: 2px solid var(--line); border-radius: 14px;
+    padding: 22px 20px; margin: 0 0 16px;
+    font-size: 1.2rem; line-height: 1.6; font-family: inherit;
+    box-shadow: 0 2px 0 rgba(0,0,0,.05);
+  }
+  .q:active { background: #f2ead9; }
+
+  /* 自分から話したいとき。問いではないので、見た目を弱くして下に置く。 */
+  #freeStart {
+    display: block; width: 100%; margin-top: 26px;
+    background: none; border: none; border-bottom: 1px solid var(--line);
+    color: #5d5245; font-size: 1rem; font-family: inherit;
+    padding: 10px 0;
+  }
+
+  /* 会話 */
+  .bubble {
+    background: var(--card); border: 2px solid var(--line); border-radius: 14px;
+    padding: 18px 20px; margin: 0 0 16px; font-size: 1.2rem; line-height: 1.7;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .bubble.me {
+    background: #efe6d2; border-color: #e2d5bb;
+  }
+  textarea {
+    width: 100%; min-height: 150px;
+    font-size: 1.2rem; line-height: 1.7; font-family: inherit; color: var(--ink);
+    background: #fff; border: 2px solid var(--line); border-radius: 14px;
+    padding: 16px; margin: 6px 0 14px; resize: vertical;
+  }
+  .send {
+    display: block; width: 100%;
+    background: var(--accent); color: var(--accent-ink);
+    border: none; border-radius: 14px; padding: 22px;
+    font-size: 1.25rem; font-weight: 700; font-family: inherit;
+  }
+  .send:disabled { background: #c3b8a3; }
+  .send:active { background: #63491f; }
+
+  #endLink {
+    display: block; width: 100%; margin-top: 24px;
+    background: none; border: none; border-bottom: 1px solid var(--line);
+    color: #5d5245; font-size: 1rem; font-family: inherit; padding: 10px 0;
+  }
+
+  .closing { font-size: 1.3rem; line-height: 1.8; margin: 40px 0; }
+
+  /* 息子用 */
+  #owner { color: var(--owner); }
+  #owner h1 { color: var(--owner); }
+  #owner pre {
+    background: #fff; border: 1px solid #b9c6d6; border-radius: 10px;
+    padding: 12px; font-size: 12px; line-height: 1.5;
+    white-space: pre-wrap; word-break: break-all; max-height: 46vh; overflow: auto;
+  }
+  #owner button {
+    background: var(--owner); color: #fff; border: none; border-radius: 10px;
+    padding: 14px 16px; font-size: 15px; font-family: inherit; margin: 0 8px 10px 0;
+  }
+  #owner .sub { font-size: 14px; line-height: 1.7; }
+  .alert {
+    background: #fff0ee; border: 2px solid #c0392b; border-radius: 10px;
+    padding: 12px 14px; margin-bottom: 14px; color: #7d241a; font-size: 15px;
+  }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header><div id="appName">きょうの話</div></header>
+
+<!-- ① 問いを選ぶ画面 -->
+<main id="choose" class="wrap hidden">
+  <h1>どれか ひとつ、聞かせてください。</h1>
+  <div id="qList"></div>
+  <button id="freeStart" type="button">じぶんから 話したいことがあります</button>
+</main>
+
+<!-- ② 話す画面 -->
+<main id="talk" class="wrap hidden">
+  <div id="log"></div>
+  <textarea id="input" placeholder="ここに書いてください" autocomplete="off"></textarea>
+  <button id="send" class="send" type="button" disabled>書けました</button>
+  <button id="endLink" type="button">きょうは ここまでにします</button>
+</main>
+
+<!-- ③ 閉じる画面 -->
+<main id="closed" class="wrap hidden">
+  <p class="closing" id="closingWord"></p>
+</main>
+
+<!-- ④ 息子用の取り出し画面（母には見せない） -->
+<main id="owner" class="wrap hidden">
+  <h1>取り出し</h1>
+  <div id="ownerAlerts"></div>
+  <p class="sub" id="ownerSummary"></p>
+  <button id="btnCopy" type="button">まるごと写す</button>
+  <button id="btnFile" type="button">ファイルにする</button>
+  <button id="btnAll" type="button">ぜんぶ見る</button>
+  <button id="btnBack" type="button">母の画面に戻る</button>
+  <hr style="border:none;border-top:1px solid #b9c6d6;margin:14px 0">
+  <p class="sub" style="margin:0 0 8px">
+    <strong>引っ越し用。</strong>アプリの置き場（URL）が変わると、この端末に貯まった記録は読めなくなる。
+    <strong>変える前に控えを取り、新しいほうで戻す。</strong>
+  </p>
+  <button id="btnBackup" type="button">引っ越しの控えをつくる</button>
+  <button id="btnRestore" type="button">控えから戻す</button>
+  <input id="restoreFile" type="file" accept=".json,application/json" class="hidden">
+  <pre id="ownerOut"></pre>
+</main>
+
+<script>
+"use strict";
+/* ============================================================================
+   母インタビューアプリ（PWA）
+   🚨 このファイルは公開されている。設計の正本は手元の非公開の文書にあり、
+      理由・経緯はそちらにしか書かない。ここには「守る決まり」だけを置く。
+
+   🚨 このアプリが絶対にやらないこと（設計 §3-2）
+      褒めない／要約しない／助言しない／感情を推測しない／「なぜ」を使わない
+      母の質問に答えない／こちらから重い話題（死・病気・お金）を持ち出さない
+   🚨 母の画面に出さないもの
+      日付・経過日数・未回答・問いの残数・数字全般（催促と同じ働きをする）
+   🚨 母の言葉は1字も直さずに保存する（誤字・言い直しの跡ごと残す）
+============================================================================ */
+
+// ── 保存先 ─────────────────────────────────────────────
+// 🚨 母の語りはこの端末の中だけにある。外へは出さない（設計 §15-1 の②③）。
+// ⚠️ Chromeの「Cookieとサイトデータ」削除で消える。だから永続化を要求する（下）。
+const KEY = "mother-interview-v1";
+
+const DEFAULT_QUESTIONS = [
+  // 🚨 問いの中身は、このアプリで決めるものではない。ここにあるのは仮。
+  // 枠（3つの組み合わせ）だけが、このアプリの決まり：軽い1・掘りやすい1・開いた1。
+  { id: "k1", slot: "軽い",     type: "ポイ活", text: "ポイ活は、いつから始めましたか。" },
+  { id: "k2", slot: "軽い",     type: "推し",   text: "いちばん最近、いいなと思ったのは誰ですか。" },
+  { id: "k3", slot: "軽い",     type: "ポイ活", text: "きょうは、何をしていましたか。" },
+  { id: "h1", slot: "掘りやすい", type: "過去",   text: "はじめて働いたのは、どんな仕事でしたか。" },
+  { id: "h2", slot: "掘りやすい", type: "過去",   text: "子どものころ住んでいた家は、どんな家でしたか。" },
+  { id: "h3", slot: "掘りやすい", type: "過去",   text: "いちばん長く住んだ町は、どこでしたか。" },
+  { id: "o1", slot: "開いた",   type: "開いた問い", text: "このごろ、よく思い出すことはありますか。" },
+  { id: "o2", slot: "開いた",   type: "開いた問い", text: "いま、気になっていることはありますか。" },
+  { id: "o3", slot: "開いた",   type: "開いた問い", text: "だれかに言っておきたいことは、ありますか。" },
+];
+
+const SLOTS = ["軽い", "掘りやすい", "開いた"];
+
+// ── 追い質問は4つの型しかない（設計 §4）────────────────────
+// 🚨 自由に作らせない。「なぜ」は入れない（理由を聞くと、場面ではなく説明が返る）。
+const FOLLOW_UPS = [
+  { type: "具体",    text: "そのとき、何をしていましたか。" },
+  { type: "場所・体", text: "どこにいましたか。" },
+  { type: "時間",    text: "その前は、どうでしたか。" },
+  { type: "人",      text: "そばに 誰かいましたか。" },
+];
+
+// ── 定型の言葉（1通40字以内）───────────────────────────
+const WORDS = {
+  receipt: "ありがとうございます。",
+  close:   "ありがとうございました。また明日、聞かせてください。",
+  stop:    "わかりました。",
+  toSon:   "息子さんに伝えますね。",
+  erase:   "わかりました。息子さんに伝えます。",
+};
+
+// ── 二重の関門・2段目（設計 §3-3）────────────────────────
+// 🚨 アプリが口にする文は、出す直前に必ずここを通す。
+//    いまは定型文しか出さないので当たらないが、あとで追い質問をAIに書かせたとき
+//    （設計 §3-4）に効くのはこの関門。先に置いておく。
+const BANNED = [
+  /いいですね|よかったですね|すてき|素敵|すばらしい|素晴らしい|えらい|偉い|立派|さすが/,  // 褒める
+  /がんばって|頑張って|無理しないで|お大事に|お気をつけて/,                                // 助言・励まし
+  /つまり|ということですね|んですね|のですね/,                                            // 要約・確認
+  /寂しかった|つらかった|大変でしたね|うれしかったですね|悲しかった/,                      // 感情の推測
+  /なぜ|どうして|理由は/,                                                                 // 「なぜ」の禁止
+  /病気|薬|入院|手術|がん|認知症/,                                                        // こちらから出さない
+];
+function passesFilter(text) {
+  return !BANNED.some((re) => re.test(text));
+}
+// 関門を通ったものだけを返す。外したら受領だけの定型に落とす（設計 §3-4）。
+function safeSay(text) {
+  if (passesFilter(text)) return { text, fellBack: false };
+  return { text: WORDS.receipt, fellBack: true };
+}
+
+// ── 母の言葉を見て、掘るのをやめる合図（設計 §5-1）────────────
+// 🚨 語尾で取りこぼさないこと。2026-08-23、「痛い」は拾えたのに「痛くて」を拾えず、
+//    膝が痛いと言われた直後に追い質問を出した。**語幹で当てる。**
+// ⚠️ 当てすぎて閉じるのは、当て損ねて掘り続けるより軽い。迷ったら閉じる側に倒す。
+const SAFETY = [
+  /痛|しんど|苦し|だる|具合|体調|入院|手術|病院|医者|薬|骨折|転ん|転び|めまい|眠れ|寝られ|病気|がん|癌|認知症|介護|熱が/,
+  /死|亡くな|葬式|お墓|位牌|命日|遺影|お迎え/,
+  /年金|借金|生活費|支払|家計|貯金|お金がな|お金が無|金がな|お金の心配/,
+];
+// ⚠️ 「必死で」は設計 §3-1 の例そのもの。これで閉じてはいけないので、当てる前に外す。
+function safetyHit(text) {
+  const t = text.replace(/必死/g, "");
+  return SAFETY.some((re) => re.test(t));
+}
+// 「もういい」の合図。通知はしないが、掘らずに閉じる。
+const STOP = /もういい|忘れた|言いたくない|やめたい|やめる|今日はいい|きょうはいい|話したくない/;
+// 消してほしい、という申し出。すぐ息子に伝える。
+const ERASE = /消して|けして|削除|なかったことに/;
+// 母がアプリに質問したとき（設計 §5-3）。アプリは答えない。
+const ASKING_US = /誰が読む|だれが読む|何に使う|なんに使う|本当に載る|ほんとうに載る|どうなるの|誰が見る|だれが見る/;
+
+// ── 保存 ───────────────────────────────────────────────
+function blankStore() {
+  return {
+    version: 1,
+    questions: DEFAULT_QUESTIONS.map((q) => ({ ...q, seen: 0, retired: false, used: false })),
+    slots: {},          // { 軽い: id, 掘りやすい: id, 開いた: id }
+    sessions: [],
+    lastOpenAt: 0,
+    exportedAt: 0,
+  };
+}
+let store = load();
+
+function load() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return blankStore();
+    const s = JSON.parse(raw);
+    if (!s || s.version !== 1) return blankStore();
+    return s;
+  } catch (e) {
+    // 🚨 読めなくても、母には何も見せない。新しい入れ物で続ける。
+    return blankStore();
+  }
+}
+function save() {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(store));
+  } catch (e) {
+    // 容量不足など。母には見せない。取り出し画面でだけ分かるようにする。
+    store._saveError = String(e);
+  }
+}
+
+// ── 問いの3つを組む（設計 §2-0b・2-0c）──────────────────
+// 数え方は「母がアプリを開いて、その問いを見た回数」。開かなかった日は数えない。
+// ⚠️ 入れ替えの閾値2回は推測値。実測で決め直す（設計 §2-0c）。
+const RETIRE_AFTER_SEEN = 2;
+const OPEN_GAP_MS = 60 * 60 * 1000;   // これ以上あいたら「開き直した」とみなす
+const SESSION_GAP_MS = 60 * 60 * 1000; // 最後の発言から60分で、その回は閉じる（設計 §2-0）
+
+function pickForSlot(slot) {
+  const cands = store.questions.filter((q) => q.slot === slot && !q.retired && !q.used);
+  if (cands.length === 0) {
+    // 🚨 引っ込めた問いは捨てていない。全部出し切ったら、見た回数を戻して出し直す。
+    store.questions.forEach((q) => { if (q.slot === slot && !q.used) { q.retired = false; q.seen = 0; } });
+    const again = store.questions.filter((q) => q.slot === slot && !q.used);
+    return again.length ? again[0].id : null;
+  }
+  return cands[0].id;
+}
+function qById(id) { return store.questions.find((q) => q.id === id) || null; }
+
+function refreshSlots(countAsSeen) {
+  // 空いている枠を埋める
+  SLOTS.forEach((slot) => {
+    const cur = qById(store.slots[slot]);
+    if (!cur || cur.retired || cur.used || cur.slot !== slot) {
+      store.slots[slot] = pickForSlot(slot);
+    }
+  });
+
+  if (countAsSeen) {
+    // 見た回数を1つずつ増やす
+    SLOTS.forEach((slot) => {
+      const q = qById(store.slots[slot]);
+      if (q) q.seen += 1;
+    });
+    // 🚨 一度に替えるのは1つだけ。3つ同時に替えると、気になっていた問いまで消える。
+    const over = SLOTS.map((s) => qById(store.slots[s]))
+      .filter((q) => q && q.seen >= RETIRE_AFTER_SEEN)
+      .sort((a, b) => b.seen - a.seen)[0];
+    if (over) {
+      over.retired = true;              // 捨てない。時期を置いて出し直す
+      store.slots[over.slot] = pickForSlot(over.slot);
+    }
+  }
+  save();
+}
+
+// ── 画面の切り替え ─────────────────────────────────────
+const el = (id) => document.getElementById(id);
+function show(which) {
+  ["choose", "talk", "closed", "owner"].forEach((n) => el(n).classList.toggle("hidden", n !== which));
+  window.scrollTo(0, 0);
+}
+
+// ── いまの回 ───────────────────────────────────────────
+let session = null;   // 進行中の回
+
+function currentSession() {
+  const last = store.sessions[store.sessions.length - 1];
+  if (!last || last.endedAt) return null;
+  const lastTurn = last.turns[last.turns.length - 1];
+  const at = lastTurn ? lastTurn.at : last.startedAt;
+  if (Date.now() - at > SESSION_GAP_MS) {
+    // 60分あいた。その回は閉じたものとして扱う（母には何も見せない）。
+    last.endedAt = at;
+    last.closedReason = "間があいた";
+    save();
+    return null;
+  }
+  return last;
+}
+
+function startSession(questionId, spontaneous) {
+  const notChosen = SLOTS.map((s) => store.slots[s]).filter((id) => id && id !== questionId);
+  session = {
+    id: Date.now(),
+    startedAt: Date.now(),
+    endedAt: 0,
+    questionId: questionId || null,
+    notChosen,
+    spontaneous: !!spontaneous,
+    askedCount: 0,          // アプリが出した「問い」の数（上限5・設計 §2-1'）
+    followIndex: 0,
+    closedReason: "",
+    flags: [],
+    turns: [],
+  };
+  store.sessions.push(session);
+  if (questionId) {
+    const q = qById(questionId);
+    if (q) q.used = true;   // 選ばれた問いは在庫から外す
+    store.slots[q ? q.slot : ""] = null;
+  }
+  save();
+}
+
+function addTurn(who, text, kind) {
+  const now = Date.now();
+  const prev = session.turns[session.turns.length - 1];
+  const gapSec = prev ? Math.round((now - prev.at) / 1000) : null;
+  session.turns.push({ who, text, at: now, gapSec, kind: kind || "" });
+  save();
+}
+
+function appSays(text, kind) {
+  // 🚨 出す直前に必ず関門を通す（設計 §3-3 の2段目）
+  const checked = safeSay(text);
+  if (checked.fellBack) session.flags.push({ at: Date.now(), kind: "関門で差し替え", excerpt: text });
+  addTurn("アプリ", checked.text, kind);
+  drawLog();
+}
+
+function closeSession(reason, word) {
+  session.endedAt = Date.now();
+  session.closedReason = reason;
+  save();
+  el("closingWord").textContent = word;
+  show("closed");
+}
+
+// ── 会話の描画 ─────────────────────────────────────────
+// ⚠️ 時刻・経過秒・問いの残り数は母の画面に出さない。記録には残す。
+function drawLog() {
+  const log = el("log");
+  log.innerHTML = "";
+  session.turns.forEach((t) => {
+    const div = document.createElement("div");
+    div.className = "bubble" + (t.who === "母" ? " me" : "");
+    div.textContent = t.text;
+    log.appendChild(div);
+  });
+  el("input").value = "";
+  el("send").disabled = true;
+  window.scrollTo(0, document.body.scrollHeight);
+}
+
+// ── 母が書いたものを受け取る ────────────────────────────
+const MAX_QUESTIONS = 5;   // 1回の上限（設計 §2-1'）。ノルマではない。
+
+function onSend() {
+  const raw = el("input").value;
+  const text = raw.replace(/\s+$/, "");    // 🚨 末尾の改行だけ落とす。中身は1字も直さない
+  if (!text) return;
+
+  // 🚨 画面が古いまま残っていることがある（アプリを開きっぱなしにして、あとから書いた）。
+  if (!session || session.endedAt) { boot(); return; }
+
+  // 🚨 最後の発言から60分あいていたら、その回は終わっている（設計 §2-0）。
+  //    そこへ届いた言葉は「自発」として残し、掘らずに閉じだけ返す（設計 §6）。
+  const lastTurn = session.turns[session.turns.length - 1];
+  const lastAt = lastTurn ? lastTurn.at : session.startedAt;
+  if (Date.now() - lastAt > SESSION_GAP_MS) {
+    session.endedAt = lastAt;
+    session.closedReason = "間があいた";
+    save();
+    startSession(null, true);
+    addTurn("母", text, "自発");
+    drawLog();
+    closeSession("自発（掘らずに閉じた）", WORDS.close);
+    return;
+  }
+
+  addTurn("母", text, session.spontaneous && session.turns.length === 0 ? "自発" : "");
+  drawLog();
+
+  // ① 消してほしい（いちばん強い。すぐ息子へ）
+  if (ERASE.test(text)) {
+    session.flags.push({ at: Date.now(), kind: "消してほしい", excerpt: text });
+    appSays(WORDS.erase);
+    closeSession("消してと言われた", WORDS.close);
+    return;
+  }
+
+  // ② 掘るのをやめる合図（体・死・お金）→ 掘らずに閉じる。息子に伝える。
+  if (safetyHit(text)) {
+    session.flags.push({ at: Date.now(), kind: "掘らずに閉じた", excerpt: text });
+    closeSession("セーフティ", WORDS.close);
+    return;
+  }
+
+  // ③ 「もういい」「やめる」→ 理由を聞かずに終わる
+  if (STOP.test(text)) {
+    closeSession("母が閉じた", WORDS.stop);
+    return;
+  }
+
+  // ④ 母がアプリに質問した → アプリは答えない（設計 §5-3）
+  if (ASKING_US.test(text)) {
+    session.flags.push({ at: Date.now(), kind: "母からの質問", excerpt: text });
+    appSays(WORDS.toSon);
+    return;   // 問いの数には数えない。同じ問いのまま続ける
+  }
+
+  // ⑤ 同じことを3回以上繰り返した → 閉じる（設計 §5-1）
+  const norm = text.replace(/\s/g, "");
+  const same = session.turns.filter((t) => t.who === "母" && t.text.replace(/\s/g, "") === norm).length;
+  if (same >= 3) {
+    session.flags.push({ at: Date.now(), kind: "同じ話が3回", excerpt: text });
+    closeSession("同じ話が3回", WORDS.close);
+    return;
+  }
+
+  // ⑥ 自発の回は掘らない。閉じだけ返す（設計 §6）
+  if (session.spontaneous) {
+    closeSession("自発（掘らずに閉じた）", WORDS.close);
+    return;
+  }
+
+  // ⑦ 上限に達したら閉じる
+  if (session.askedCount >= MAX_QUESTIONS) {
+    closeSession("5問に達した", WORDS.close);
+    return;
+  }
+
+  // ⑧ 相づち＋追い質問を1通にまとめて出す（設計 §2-1）
+  const fu = FOLLOW_UPS[session.followIndex % FOLLOW_UPS.length];
+  session.followIndex += 1;
+  session.askedCount += 1;
+  save();
+  appSays(WORDS.receipt + "\n" + fu.text, "追い質問:" + fu.type);
+}
+
+// ── 起動 ───────────────────────────────────────────────
+function boot() {
+  // 端末の中のデータを消えにくくする（設計 §15-3。許可されるとは限らない）
+  if (navigator.storage && navigator.storage.persist) {
+    navigator.storage.persisted().then((ok) => { if (!ok) navigator.storage.persist(); });
+  }
+
+  const openedAgain = Date.now() - (store.lastOpenAt || 0) > OPEN_GAP_MS;
+  store.lastOpenAt = Date.now();
+
+  session = currentSession();
+  if (session) {
+    // 続きから。問いの数え直しはしない。
+    show("talk");
+    drawLog();
+  } else {
+    refreshSlots(openedAgain);   // 開き直したときだけ「見た回数」を数える
+    drawChoose();
+    show("choose");
+  }
+  save();
+}
+
+function drawChoose() {
+  const list = el("qList");
+  list.innerHTML = "";
+  SLOTS.forEach((slot) => {
+    const q = qById(store.slots[slot]);
+    if (!q) return;
+    const b = document.createElement("button");
+    b.className = "q";
+    b.type = "button";
+    b.textContent = q.text;
+    b.addEventListener("click", () => {
+      startSession(q.id, false);
+      session.askedCount = 1;              // 選ばれた問いが1問目
+      addTurn("アプリ", q.text, "今日の問い");
+      show("talk");
+      drawLog();
+    });
+    list.appendChild(b);
+  });
+}
+
+el("freeStart").addEventListener("click", () => {
+  startSession(null, true);
+  show("talk");
+  drawLog();
+});
+
+el("input").addEventListener("input", () => {
+  el("send").disabled = el("input").value.trim() === "";
+});
+el("send").addEventListener("click", onSend);
+el("endLink").addEventListener("click", () => {
+  closeSession("母が閉じた", WORDS.stop);
+});
+
+// ── 息子用の取り出し（母には見せない）──────────────────
+// 入り口：画面のいちばん上の名前を5回続けて押す。または ?owner を付けて開く。
+let tapCount = 0, tapTimer = 0;
+el("appName").addEventListener("click", () => {
+  clearTimeout(tapTimer);
+  tapCount += 1;
+  tapTimer = setTimeout(() => { tapCount = 0; }, 1200);
+  if (tapCount >= 5) { tapCount = 0; openOwner(); }
+});
+if (location.search.indexOf("owner") >= 0) setTimeout(openOwner, 0);
+
+function two(n) { return String(n).padStart(2, "0"); }
+function ymd(ms) { const d = new Date(ms); return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`; }
+function hm(ms) { const d = new Date(ms); return `${two(d.getHours())}:${two(d.getMinutes())}`; }
+
+// 受け渡しファイルの中身を作る（設計 §7 が要求するものを全部入れる）
+function buildMarkdown(onlyNew) {
+  const since = onlyNew ? (store.exportedAt || 0) : 0;
+  const rows = store.sessions.filter((s) => s.startedAt > since && s.turns.length > 0);
+  if (rows.length === 0) return "";
+
+  const byDate = {};
+  rows.forEach((s) => { (byDate[ymd(s.startedAt)] = byDate[ymd(s.startedAt)] || []).push(s); });
+
+  let out = "";
+  Object.keys(byDate).sort().forEach((date) => {
+    out += `# 母の記録 ${date}\n\n`;
+    byDate[date].forEach((s, i) => {
+      const q = qById(s.questionId);
+      const notChosen = (s.notChosen || []).map((id) => { const x = qById(id); return x ? x.text : id; });
+      const answered = s.turns.filter((t) => t.who === "母").length;
+      out += `## ${i + 1}回目（${hm(s.startedAt)}〜${s.endedAt ? hm(s.endedAt) : "続いている"}）\n\n`;
+      out += `- 選んだ問い：${s.spontaneous ? "**自発**（母から話し始めた）" : (q ? q.text + `（${q.slot}・${q.type}）` : "—")}\n`;
+      if (!s.spontaneous) out += `- 選ばれなかった問い：${notChosen.length ? notChosen.join(" ／ ") : "—"}\n`;
+      out += `- 閉じ方：${s.closedReason || "—"}\n`;
+      out += `- 母が答えた数：${answered}（上限5と混ぜない）\n`;
+      if (s.flags && s.flags.length) {
+        out += `- 🚨 **息子さんが読んでください**：`;
+        out += s.flags.map((f) => `${f.kind}「${f.excerpt}」`).join(" ／ ") + "\n";
+      }
+      out += `\n| 時刻 | 話者 | 前の発言から | 発言 |\n|---|---|---|---|\n`;
+      s.turns.forEach((t) => {
+        const body = t.text.replace(/\|/g, "\\|").replace(/\n/g, "<br>");
+        out += `| ${hm(t.at)} | ${t.who} | ${t.gapSec === null ? "—" : t.gapSec + "秒"} | ${body} |\n`;
+      });
+      out += "\n";
+    });
+  });
+  return out;
+}
+
+let ownerShowingAll = false;
+function openOwner() {
+  ownerShowingAll = false;
+  renderOwner();
+  show("owner");
+}
+function renderOwner() {
+  const md = buildMarkdown(!ownerShowingAll);
+  el("ownerOut").textContent = md || "（新しい記録はありません）";
+
+  const alerts = store.sessions.flatMap((s) => (s.flags || []).map((f) => ({ ...f, at2: s.startedAt })));
+  el("ownerAlerts").innerHTML = "";
+  alerts.slice(-5).forEach((f) => {
+    const d = document.createElement("div");
+    d.className = "alert";
+    d.textContent = `${ymd(f.at)} ${f.kind}：「${f.excerpt}」`;
+    el("ownerAlerts").appendChild(d);
+  });
+
+  const total = store.sessions.length;
+  const nw = store.sessions.filter((s) => s.startedAt > (store.exportedAt || 0)).length;
+  el("ownerSummary").textContent =
+    `記録されている回：${total}／まだ取り出していない回：${nw}` +
+    (store._saveError ? `／⚠️ 保存に失敗しています：${store._saveError}` : "");
+  el("btnAll").textContent = ownerShowingAll ? "新しい分だけ見る" : "ぜんぶ見る";
+}
+el("btnAll").addEventListener("click", () => { ownerShowingAll = !ownerShowingAll; renderOwner(); });
+el("btnBack").addEventListener("click", () => { boot(); });
+el("btnCopy").addEventListener("click", async () => {
+  const md = el("ownerOut").textContent;
+  try { await navigator.clipboard.writeText(md); el("btnCopy").textContent = "写しました"; }
+  catch (e) { el("btnCopy").textContent = "写せません（長押しで選んでください）"; }
+  setTimeout(() => { el("btnCopy").textContent = "まるごと写す"; }, 2500);
+});
+el("btnFile").addEventListener("click", () => {
+  const md = el("ownerOut").textContent;
+  if (!md || md.indexOf("（新しい") === 0) return;
+  const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `${ymd(Date.now())}.md`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  // 🚨 取り出せたので、ここまでを「渡した」とする。母の記録は消さない。
+  store.exportedAt = Date.now();
+  save();
+  renderOwner();
+});
+
+// ── 引っ越し（URLが変わると端末の中の記録が読めなくなる。設計 §15-2 の3）──
+// 🚨 控えは「読むための文面」とは別物。こちらは機械が読み戻すためのもの。
+//    受け渡しファイル（§7）にこれを混ぜない。読む側の邪魔になる。
+el("btnBackup").addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify(store)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `ひっこしの控え-${ymd(Date.now())}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  el("btnBackup").textContent = "控えを作りました";
+  setTimeout(() => { el("btnBackup").textContent = "引っ越しの控えをつくる"; }, 2500);
+});
+
+el("btnRestore").addEventListener("click", () => el("restoreFile").click());
+el("restoreFile").addEventListener("change", (ev) => {
+  const file = ev.target.files && ev.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    let incoming;
+    try { incoming = JSON.parse(String(reader.result)); }
+    catch (e) { el("ownerSummary").textContent = "⚠️ この控えは読めませんでした。"; return; }
+    if (!incoming || incoming.version !== 1 || !Array.isArray(incoming.sessions)) {
+      el("ownerSummary").textContent = "⚠️ この控えは、このアプリのものではありません。";
+      return;
+    }
+    const added = mergeStore(incoming);
+    save();
+    ownerShowingAll = true;
+    renderOwner();
+    el("ownerSummary").textContent = `控えから ${added} 回ぶんを戻しました。`;
+  };
+  reader.readAsText(file, "utf-8");
+  ev.target.value = "";
+});
+
+// 🚨 上書きしない。いま端末にあるものを消さずに、足りない回だけ足す。
+//    （新しい端末で先に何回か話していても、その分が消えないようにする）
+function mergeStore(incoming) {
+  const have = new Set(store.sessions.map((s) => s.id));
+  let added = 0;
+  incoming.sessions.forEach((s) => {
+    if (!have.has(s.id)) { store.sessions.push(s); added += 1; }
+  });
+  store.sessions.sort((a, b) => a.startedAt - b.startedAt);
+
+  // 問いの状態（見た回数・引っ込めた・使った）は、進んでいるほうに合わせる
+  incoming.questions.forEach((q) => {
+    const mine = store.questions.find((x) => x.id === q.id);
+    if (!mine) { store.questions.push(q); return; }
+    mine.seen = Math.max(mine.seen || 0, q.seen || 0);
+    mine.retired = mine.retired || q.retired;
+    mine.used = mine.used || q.used;
+  });
+  store.exportedAt = Math.max(store.exportedAt || 0, incoming.exportedAt || 0);
+  SLOTS.forEach((slot) => {
+    const cur = qById(store.slots[slot]);
+    if (!cur || cur.retired || cur.used) store.slots[slot] = pickForSlot(slot);
+  });
+  return added;
+}
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
+
+boot();
+</script>
+</body>
+</html>
