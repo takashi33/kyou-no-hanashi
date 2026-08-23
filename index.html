@@ -579,10 +579,36 @@ function onSend() {
 }
 
 // ── 起動 ───────────────────────────────────────────────
+// 🚨 受け口の設定を、母の端末で打ち込ませない（息子が長い文字列を打つのは事故のもと）。
+//    息子が用意したリンクを**母の端末で一度開くだけ**で入る。
+//    ⚠️ 開いた直後にアドレス欄から消す。履歴に残る時間を短くする。
+function takeSetupFromLink() {
+  const m = location.search.match(/[?&]setup=([^&]+)/);
+  if (!m) return false;
+  let ok = false;
+  try {
+    const cfg = JSON.parse(decodeURIComponent(escape(atob(m[1].replace(/-/g, "+").replace(/_/g, "/")))));
+    if (cfg && cfg.u && cfg.k) {
+      store.sync = Object.assign({}, store.sync, { url: cfg.u, key: cfg.k, lastError: "" });
+      save();
+      ok = true;
+    }
+  } catch (e) { /* 壊れたリンクは黙って無視する */ }
+  history.replaceState(null, "", location.pathname);
+  return ok;
+}
+
 function boot() {
   // 端末の中のデータを消えにくくする（設計 §15-3。許可されるとは限らない）
   if (navigator.storage && navigator.storage.persist) {
     navigator.storage.persisted().then((ok) => { if (!ok) navigator.storage.persist(); });
+  }
+
+  // リンクで受け口が入ったときは、そのまま息子用の画面を出して、届くところまで見せる
+  if (takeSetupFromLink()) {
+    openOwner();
+    el("btnSyncNow").click();
+    return;
   }
 
   const openedAgain = Date.now() - (store.lastOpenAt || 0) > OPEN_GAP_MS;
