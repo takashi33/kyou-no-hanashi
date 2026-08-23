@@ -188,14 +188,36 @@ const DEFAULT_QUESTIONS = [
 
 const SLOTS = ["軽い", "掘りやすい", "開いた"];
 
-// ── 追い質問は4つの型しかない（設計 §4）────────────────────
-// 🚨 自由に作らせない。「なぜ」は入れない（理由を聞くと、場面ではなく説明が返る）。
+// ── 追い質問の型（設計 §4 の4つ ＋「どのように」）─────────────
+// 🚨 自由に作らせない。**「なぜ」は入れない**（理由を聞くと、場面ではなく説明が返る）。
+//    「どのように」は 2026-08-23 に足した。⚠️ 手順の説明を呼びやすい型なので、
+//    「どうやって」ではなく**様子をたずねる形**にしてある。
+//
+// 🚨 上から順に強い（場面が出やすい）。同じ型は1回の中で二度使わない。
 const FOLLOW_UPS = [
-  { type: "具体",    text: "そのとき、何をしていましたか。" },
-  { type: "場所・体", text: "どこにいましたか。" },
-  { type: "時間",    text: "その前は、どうでしたか。" },
-  { type: "人",      text: "そばに 誰かいましたか。" },
+  // has ＝「母がもう書いている」ことを見分けるための印。書いてあれば、その型は聞かない。
+  { type: "具体",    text: "そのとき、何をしていましたか。",
+    has: /(した|して|やった|作っ|行っ|帰っ|働い|洗っ|話し|食べ|買っ|歩い|乗っ|使っ|持っ|見て|見た|寝て|起き)/ },
+  { type: "場所・体", text: "どこにいましたか。",
+    has: /(家|うち|部屋|台所|居間|玄関|庭|畑|田|店|市場|スーパー|駅|学校|職場|会社|工場|病院|寺|神社|公園|道|近所|となり|隣|実家|田舎|町|村|市|県|旅館|風呂|外|そこ|ここ)/ },
+  { type: "時間",    text: "その前は、どうでしたか。",
+    has: /(去年|今年|来年|昔|むかし|子ども|こども|若い|ころ|頃|とき|朝|昼|夕|夜|春|夏|秋|冬|正月|盆|きのう|昨日|きょう|今日|さっき|[0-9０-９]+\s*(年|月|日|時|歳|才))/ },
+  { type: "人",      text: "そばに 誰かいましたか。",
+    has: /(母|父|おかあ|おとう|兄|姉|弟|妹|夫|主人|嫁|息子|娘|孫|友|先生|お客|近所の人|みんな|ふたり|二人|ひとり|一人|家族|親)/ },
+  { type: "どのように", text: "どんな様子でしたか。",
+    has: /(ような|ように|みたいに|ゆっくり|急いで|静か|にぎやか|きれい|大きな|小さな|ぼろ|新し|古い)/ },
 ];
+
+// 🚨 順番で回さない。**母がまだ書いていないもの**を返す。
+//    同じことを二度聞かないため。書いてあるものしか残っていなければ、上から順に使う。
+function nextFollowUp(s) {
+  const said = s.turns.filter((t) => t.who === "母").map((t) => t.text).join("\n");
+  const asked = s.askedTypes || [];
+  const remaining = FOLLOW_UPS.filter((f) => asked.indexOf(f.type) < 0);
+  if (remaining.length === 0) return null;
+  const missing = remaining.filter((f) => !f.has.test(said));
+  return (missing.length ? missing : remaining)[0];
+}
 
 // ── 定型の言葉（1通40字以内）───────────────────────────
 const WORDS = {
@@ -363,7 +385,7 @@ function startSession(questionId, spontaneous) {
     notChosen,
     spontaneous: !!spontaneous,
     askedCount: 0,          // アプリが出した「問い」の数（上限5・設計 §2-1'）
-    followIndex: 0,
+    askedTypes: [],         // すでに使った型。同じ型を二度使わない
     closedReason: "",
     flags: [],
     turns: [],
@@ -496,8 +518,9 @@ function onSend() {
   }
 
   // ⑧ 相づち＋追い質問を1通にまとめて出す（設計 §2-1）
-  const fu = FOLLOW_UPS[session.followIndex % FOLLOW_UPS.length];
-  session.followIndex += 1;
+  const fu = nextFollowUp(session);
+  if (!fu) { closeSession("聞ける型が無くなった", WORDS.close); return; }
+  session.askedTypes.push(fu.type);
   session.askedCount += 1;
   save();
   appSays(WORDS.receipt + "\n" + fu.text, "追い質問:" + fu.type);
