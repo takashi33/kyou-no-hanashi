@@ -102,6 +102,11 @@
     padding: 14px 16px; font-size: 15px; font-family: inherit; margin: 0 8px 10px 0;
   }
   #owner .sub { font-size: 14px; line-height: 1.7; }
+  #owner input[type="url"], #owner input[type="text"] {
+    display: block; width: 100%; margin: 0 0 8px;
+    font-size: 15px; font-family: inherit; color: var(--owner);
+    background: #fff; border: 1px solid #b9c6d6; border-radius: 8px; padding: 10px 12px;
+  }
   .alert {
     background: #fff0ee; border: 2px solid #c0392b; border-radius: 10px;
     padding: 12px 14px; margin-bottom: 14px; color: #7d241a; font-size: 15px;
@@ -149,6 +154,18 @@
   <button id="btnBackup" type="button">引っ越しの控えをつくる</button>
   <button id="btnRestore" type="button">控えから戻す</button>
   <input id="restoreFile" type="file" accept=".json,application/json" class="hidden">
+
+  <hr style="border:none;border-top:1px solid #b9c6d6;margin:14px 0">
+  <p class="sub" style="margin:0 0 8px">
+    <strong>PCへ自動で渡す。</strong>この端末で一度だけ入れる。
+    以後は<strong>母が開くたびに、まだ渡していない分がひとりでに届く</strong>（PCが起きていれば）。
+  </p>
+  <input id="syncUrl" type="url" placeholder="受け口のアドレス" autocomplete="off">
+  <input id="syncKey" type="text" placeholder="あいことば" autocomplete="off">
+  <button id="btnSyncSave" type="button">この端末に覚えさせる</button>
+  <button id="btnSyncNow" type="button">いま送る</button>
+  <p class="sub" id="syncState"></p>
+
   <pre id="ownerOut"></pre>
 </main>
 
@@ -279,6 +296,7 @@ function blankStore() {
     sessions: [],
     lastOpenAt: 0,
     exportedAt: 0,
+    sync: {},           // PCの受け口。この端末にだけ入れる（下の sendToPc）
   };
 }
 let store = load();
@@ -289,6 +307,7 @@ function load() {
     if (!raw) return blankStore();
     const s = JSON.parse(raw);
     if (!s || s.version !== 1) return blankStore();
+    if (!s.sync) s.sync = {};    // 受け口を足す前に作られた入れ物のため
     return s;
   } catch (e) {
     // 🚨 読めなくても、母には何も見せない。新しい入れ物で続ける。
@@ -547,6 +566,10 @@ function boot() {
     show("choose");
   }
   save();
+
+  // 🚨 母が開いたついでに、まだ渡していない分をPCへ送る。
+  //    母には何も見せない。届かなくても、次に開いたときにまた送る。
+  setTimeout(() => { sendToPc(); }, 1200);
 }
 
 function drawChoose() {
@@ -600,6 +623,29 @@ function ymd(ms) { const d = new Date(ms); return `${d.getFullYear()}-${two(d.ge
 function hm(ms) { const d = new Date(ms); return `${two(d.getHours())}:${two(d.getMinutes())}`; }
 
 // 受け渡しファイルの中身を作る（設計 §7 が要求するものを全部入れる）
+// 1回ぶんの文面。🚨 ここが唯一の書き方。取り出しにもPCへの受け渡しにも同じものを使う。
+function sessionMarkdown(s, nth) {
+  const q = qById(s.questionId);
+  const notChosen = (s.notChosen || []).map((id) => { const x = qById(id); return x ? x.text : id; });
+  const answered = s.turns.filter((t) => t.who === "母").length;
+  const line = (t) => t + "\n";
+  let out = line(`## ${nth}回目（${hm(s.startedAt)}〜${s.endedAt ? hm(s.endedAt) : "続いている"}）`) + "\n";
+  out += line(`- 選んだ問い：${s.spontaneous ? "**自発**（母から話し始めた）" : (q ? q.text + `（${q.slot}・${q.type}）` : "—")}`);
+  if (!s.spontaneous) out += line(`- 選ばれなかった問い：${notChosen.length ? notChosen.join(" ／ ") : "—"}`);
+  out += line(`- 閉じ方：${s.closedReason || "—"}`);
+  out += line(`- 母が答えた数：${answered}（上限5と混ぜない）`);
+  if (s.flags && s.flags.length) {
+    out += line("- 🚨 **息子さんが読んでください**：" + s.flags.map((f) => `${f.kind}「${f.excerpt}」`).join(" ／ "));
+  }
+  out += "\n" + line("| 時刻 | 話者 | 前の発言から | 発言 |") + line("|---|---|---|---|");
+  s.turns.forEach((t) => {
+    // 🚨 母の文は1字も直さない。表が壊れないように、縦線と改行だけ書き方を変える。
+    const body = t.text.replace(/\|/g, "\\|").replace(/\n/g, "<br>");
+    out += line(`| ${hm(t.at)} | ${t.who} | ${t.gapSec === null ? "—" : t.gapSec + "秒"} | ${body} |`);
+  });
+  return out + "\n";
+}
+
 function buildMarkdown(onlyNew) {
   const since = onlyNew ? (store.exportedAt || 0) : 0;
   const rows = store.sessions.filter((s) => s.startedAt > since && s.turns.length > 0);
@@ -610,27 +656,8 @@ function buildMarkdown(onlyNew) {
 
   let out = "";
   Object.keys(byDate).sort().forEach((date) => {
-    out += `# 母の記録 ${date}\n\n`;
-    byDate[date].forEach((s, i) => {
-      const q = qById(s.questionId);
-      const notChosen = (s.notChosen || []).map((id) => { const x = qById(id); return x ? x.text : id; });
-      const answered = s.turns.filter((t) => t.who === "母").length;
-      out += `## ${i + 1}回目（${hm(s.startedAt)}〜${s.endedAt ? hm(s.endedAt) : "続いている"}）\n\n`;
-      out += `- 選んだ問い：${s.spontaneous ? "**自発**（母から話し始めた）" : (q ? q.text + `（${q.slot}・${q.type}）` : "—")}\n`;
-      if (!s.spontaneous) out += `- 選ばれなかった問い：${notChosen.length ? notChosen.join(" ／ ") : "—"}\n`;
-      out += `- 閉じ方：${s.closedReason || "—"}\n`;
-      out += `- 母が答えた数：${answered}（上限5と混ぜない）\n`;
-      if (s.flags && s.flags.length) {
-        out += `- 🚨 **息子さんが読んでください**：`;
-        out += s.flags.map((f) => `${f.kind}「${f.excerpt}」`).join(" ／ ") + "\n";
-      }
-      out += `\n| 時刻 | 話者 | 前の発言から | 発言 |\n|---|---|---|---|\n`;
-      s.turns.forEach((t) => {
-        const body = t.text.replace(/\|/g, "\\|").replace(/\n/g, "<br>");
-        out += `| ${hm(t.at)} | ${t.who} | ${t.gapSec === null ? "—" : t.gapSec + "秒"} | ${body} |\n`;
-      });
-      out += "\n";
-    });
+    out += `# 母の記録 ${date}` + "\n\n";
+    byDate[date].forEach((s, i) => { out += sessionMarkdown(s, i + 1); });
   });
   return out;
 }
@@ -660,6 +687,7 @@ function renderOwner() {
     `記録されている回：${total}／まだ取り出していない回：${nw}` +
     (store._saveError ? `／⚠️ 保存に失敗しています：${store._saveError}` : "");
   el("btnAll").textContent = ownerShowingAll ? "新しい分だけ見る" : "ぜんぶ見る";
+  renderSync();
 }
 el("btnAll").addEventListener("click", () => { ownerShowingAll = !ownerShowingAll; renderOwner(); });
 el("btnBack").addEventListener("click", () => { boot(); });
@@ -746,6 +774,91 @@ function mergeStore(incoming) {
   });
   return added;
 }
+
+// ── PCへ渡す（母は何もしない）────────────────────────────
+// 🚨 受け口の場所とあいことばは、このファイルに書かない。**この端末に一度だけ入れる。**
+//    ここは公開されているので、書いた時点で誰でも投げ込めるようになる。
+// 🚨 PCが「保存した」と返してから渡し済みにする。返事が無い日は、次に開いたとき送り直す。
+// ⚠️ 母には何も見せない。失敗しても画面に出さない。
+function unsentSessions() {
+  return store.sessions.filter((s) => s.turns.length > 0 && s.endedAt && !s.syncedAt);
+}
+
+function sendToPc() {
+  const cfg = store.sync || {};
+  if (!cfg.url || !cfg.key) return Promise.resolve({ skipped: "まだ設定していません" });
+  const rows = unsentSessions();
+  if (rows.length === 0) return Promise.resolve({ ok: true, saved: [] });
+
+  const payload = {
+    key: cfg.key,
+    sessions: rows.map((s) => {
+      const date = ymd(s.startedAt);
+      // その日の何回目か（PC側で読む順を保つため）
+      const nth = store.sessions.filter((x) => ymd(x.startedAt) === date && x.startedAt <= s.startedAt).length;
+      return { id: s.id, date, startedAt: s.startedAt, flags: s.flags || [], markdown: sessionMarkdown(s, nth) };
+    }),
+  };
+
+  return fetch(cfg.url.replace(/\/+$/, "") + "/answers", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+    .then((res) => (res.ok ? res.json() : Promise.reject(new Error("PCが受け取りませんでした（" + res.status + "）"))))
+    .then((r) => {
+      const saved = r && r.saved ? r.saved : [];
+      store.sessions.forEach((s) => { if (saved.indexOf(s.id) >= 0) s.syncedAt = Date.now(); });
+      store.sync.lastOk = Date.now();
+      store.sync.lastError = "";
+      save();
+      return { ok: true, saved };
+    })
+    .catch((e) => {
+      // ⚠️ 息子さんが読む画面に出る。機械の言葉のまま出さない。
+      const raw = String(e.message || e);
+      store.sync.lastError = /Failed to fetch|NetworkError|Load failed/i.test(raw)
+        ? "PCに届きませんでした（PCが起きていないか、受け口が閉じています）"
+        : raw.replace("PCが受け取りませんでした（401）", "あいことばが違います");
+      save();
+      return { error: store.sync.lastError };
+    });
+}
+
+function renderSync() {
+  const cfg = store.sync || {};
+  el("syncUrl").value = cfg.url || "";
+  el("syncKey").value = cfg.key || "";
+  const nokori = unsentSessions().length;
+  el("syncState").textContent =
+    (!cfg.url || !cfg.key ? "まだ設定していません。" : "") +
+    `まだ渡していない回：${nokori}` +
+    (cfg.lastOk ? `／最後に届いたのは ${ymd(cfg.lastOk)} ${hm(cfg.lastOk)}` : "") +
+    (cfg.lastError ? `／⚠️ ${cfg.lastError}` : "");
+}
+
+el("btnSyncSave").addEventListener("click", () => {
+  store.sync = Object.assign({}, store.sync, {
+    url: el("syncUrl").value.trim(),
+    key: el("syncKey").value.trim(),
+    lastError: "",
+  });
+  save();
+  renderSync();
+  el("btnSyncSave").textContent = "覚えました";
+  setTimeout(() => { el("btnSyncSave").textContent = "この端末に覚えさせる"; }, 2500);
+});
+
+el("btnSyncNow").addEventListener("click", () => {
+  el("btnSyncNow").textContent = "送っています…";
+  sendToPc().then((r) => {
+    el("btnSyncNow").textContent = "いま送る";
+    renderSync();
+    if (r.error) el("syncState").textContent = "⚠️ " + r.error;
+    else if (r.skipped) el("syncState").textContent = r.skipped;
+    else el("syncState").textContent = `${r.saved.length}回ぶんPCへ渡しました。`;
+  });
+});
 
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js").catch(() => {});
