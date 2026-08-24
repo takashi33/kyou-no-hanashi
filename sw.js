@@ -2,7 +2,8 @@
 // 🚨 母の語りはここに入れない。保存は index.html 側（端末の中）。
 //
 // ⚠️ 中身を書き換えたら CACHE の番号を上げること。上げないと古い画面が残る。
-const CACHE = "mother-interview-v1";
+// v2 … 2026-08-24。問いを16個足し、重い問いの扱いを変えた（index.html）。
+const CACHE = "mother-interview-v2";
 const FILES = ["./", "./index.html"];
 
 self.addEventListener("install", (e) => {
