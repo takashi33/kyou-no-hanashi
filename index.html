@@ -94,6 +94,8 @@
   .send:disabled { background: #c3b8a3; }
   .send:active { background: #63491f; }
 
+  /* 追い質問が的外れだったとき。問いではないので #endLink と同じ弱さにする。 */
+  #offTarget,
   #endLink {
     display: block; width: 100%; margin-top: 24px;
     background: none; border: none; border-bottom: 1px solid var(--line);
@@ -155,6 +157,9 @@
   <div id="log"></div>
   <textarea id="input" placeholder="ここに書いてください" autocomplete="off"></textarea>
   <button id="send" class="send" type="button" disabled>書けました</button>
+  <!-- 🚨 AIが書いた追い質問のときだけ出す（drawLog が出し入れする）。
+       定型文のときに出しても、押した先が同じ文なので何も変わらない。 -->
+  <button id="offTarget" type="button" class="hidden">いまのは ちがいます</button>
   <!-- 🚨 掘り下げの間、ずっとここに出しておく（2026-08-24 の決定）。
        文字を打たせずに終われることが、重い問いを載せるための守り。
        🚨 下の一文は**これだけ。**足さない。
@@ -571,6 +576,29 @@ function appSays(text, kind) {
   drawLog();
 }
 
+// 🚨 追い質問が的外れだったとき、母がその場で押せる（2026-08-26 の決定）。
+// 🚨 **母の言葉として残さない。**「的外れです」と打たせると、それが母の語りとして
+//    読む用のファイルに残り、**次の追い質問の材料にもなる**（AIにはその回の母の発言を
+//    すべて渡すため）。押した事実と、外れた問いだけを残す。
+// 🚨 **外れた問いの実物が、指示文を直すための唯一の材料になる。**
+//    こちらで作った例文で測っても、母が何を外れと感じるかは分からない。
+// ⚠️ 会話を止めない。同じ型の定型文に置き換えて、そのまま続けられるようにする。
+// ⚠️ 聞いた数（askedCount）は増やさない。母はまだ答えていない。
+function offTarget() {
+  const last = session && session.turns[session.turns.length - 1];
+  if (!last || last.who !== "アプリ" || last.kind.indexOf("追い質問:") !== 0) return;
+  const type = last.kind.slice("追い質問:".length).replace("(AI)", "");
+  const fu = FOLLOW_UPS.find((f) => f.type === type) || FOLLOW_UPS[0];
+  // ⚠️ 印に残すのは**問いの行だけ。**受け取りの言葉（「ありがとうございます。」）は
+  //    毎回同じで、外れたかどうかと関係が無い。改行が入ると読む用の文面が行の途中で割れる。
+  const asked = last.text.split("\n").filter(Boolean).pop() || last.text;
+  session.flags.push({ at: Date.now(), kind: "追い質問が的外れ", excerpt: asked });
+  last.text = fu.text;
+  last.kind = "追い質問:" + fu.type + "(的外れで差し替え)";
+  save();
+  drawLog();
+}
+
 function closeSession(reason, word) {
   session.endedAt = Date.now();
   session.closedReason = reason;
@@ -597,6 +625,9 @@ function drawLog() {
     div.textContent = t.text;
     log.appendChild(div);
   });
+  const last = session.turns[session.turns.length - 1];
+  const canReject = !!last && last.who === "アプリ" && /^追い質問:.*\(AI\)$/.test(last.kind);
+  el("offTarget").classList.toggle("hidden", !canReject);
   el("input").value = "";
   el("send").disabled = true;
   window.scrollTo(0, document.body.scrollHeight);
@@ -843,6 +874,7 @@ function drawChoose() {
 }
 
 el("swapQ").addEventListener("click", () => { swapSlots(); window.scrollTo(0, 0); });
+el("offTarget").addEventListener("click", () => { offTarget(); });
 el("freeStart").addEventListener("click", () => {
   startSession(null, true);
   show("talk");
