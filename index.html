@@ -494,6 +494,9 @@ function show(which) {
   //    ⚠️ 設定画面と息子用の画面は、自前の戻り口を持っている。
   el("backBtn").classList.toggle("hidden", which !== "talk" && which !== "closed");
   window.scrollTo(0, 0);
+  // 🚨 待っている入れ替えを、安全な画面へ移った時点で済ませる。
+  //    ⚠️ 「終わった画面」へ移った直後だけは入れ替えない。閉じの言葉を読む前に流れる。
+  if (which !== "closed" && typeof 入れ替えられるなら === "function") 入れ替えられるなら();
 }
 
 // ── 問いを選ぶ画面へ戻る ───────────────────────────────
@@ -1187,9 +1190,95 @@ el("btnSyncNow").addEventListener("click", () => {
   });
 });
 
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js").catch(() => {});
+// ── 開いただけで新しい版に入れ替わるようにする ──────────
+// 🚨 入れ替えてよいのは「問いを選ぶ画面」と「終わった画面」だけ。
+let 新しい版あり = false;
+let 入れ替えた = false;
+
+// いま入れ替えてよいか。判断だけを分けてある。
+function 入れ替えてよいか() {
+  const いまの画面 = ["choose", "talk", "closed", "setup", "owner"]
+    .find((n) => !el(n).classList.contains("hidden"));
+  if (いまの画面 !== "choose" && いまの画面 !== "closed") return false;
+  if (session && !session.endedAt) return false;        // まだ話している
+  if (el("input").value.trim() !== "") return false;    // 書きかけがある
+  return true;
 }
+
+function 入れ替えられるなら() {
+  if (!新しい版あり || 入れ替えた) return;
+  if (!入れ替えてよいか()) return;
+  入れ替えた = true;
+  location.reload();
+}
+
+// 🚨 画面を復帰させるだけのときは boot() が走らず、そのとき送信も走らない。
+//    閉じたときにも送るようにしてあるが、**閉じずに置いたまま**だとどちらも走らない。
+//    見えるようになった時点でも送る。母には何も見せない。
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  setTimeout(() => { sendToPc(); }, 300);
+});
+
+// 置いてあるものが入れ替わっていないかを、自分から聞きに行く。
+// 中身は取りに行かず、頭に付いている目印だけを聞く。
+let いまの目印 = null;
+
+function 目印を聞く() {
+  return fetch("./index.html", { method: "HEAD", cache: "no-cache" })
+    .then((r) => (r.ok ? (r.headers.get("etag") || r.headers.get("last-modified") || r.headers.get("content-length")) : null))
+    .catch(() => null);   // 圏外。何もしない
+}
+
+// 🚨 いま出ている画面そのものの目印を、端末の中に貯めてあるものから取る。
+//    ⚠️ 「初めて聞けた目印＝いま出ている版」としてはいけない。圏外で開いて、
+//       つながってから初めて聞けたとき、**新しくなっているのに同じだと思ってしまう。**
+function いま出ている版の目印() {
+  if (!("caches" in window)) return Promise.resolve(null);
+  return caches.match("./index.html")
+    .then((r) => r || caches.match("./"))
+    .then((r) => (r ? (r.headers.get("etag") || r.headers.get("last-modified") || r.headers.get("content-length")) : null))
+    .catch(() => null);
+}
+
+function 入れ替わっていないか見る() {
+  return いま出ている版の目印().then((手元) => {
+    if (手元) いまの目印 = 手元;
+    return 目印を聞く();
+  }).then((目印) => {
+    if (!目印) return;                                       // 圏外。何もしない
+    if (いまの目印 === null) { いまの目印 = 目印; return; }   // 比べる先が無い
+    if (目印 === いまの目印) return;
+    新しい版あり = true;
+    入れ替えられるなら();
+  });
+}
+
+入れ替わっていないか見る();
+
+// ⚠️ 画面を出したまま、通信だけ戻ることがある。そのときも聞き直す。
+window.addEventListener("online", () => { 入れ替わっていないか見る(); });
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").then((reg) => {
+    // 見えるようになるたびに、新しい版が出ていないか聞きに行く。
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "visible") return;
+      reg.update().catch(() => {});
+      入れ替わっていないか見る();
+      入れ替えられるなら();
+    });
+  }).catch(() => {});
+
+  // 新しい版が受け持ちに変わった瞬間。その場では入れ替えず、安全なときまで待つ。
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    新しい版あり = true;
+    入れ替えられるなら();
+  });
+}
+
+// 開いた時点の目印を覚えておく（これが無いと、次に聞いたとき何と比べればよいか分からない）
+入れ替わっていないか見る();
 
 boot();
 </script>
