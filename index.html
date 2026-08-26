@@ -157,8 +157,8 @@
   <div id="log"></div>
   <textarea id="input" placeholder="ここに書いてください" autocomplete="off"></textarea>
   <button id="send" class="send" type="button" disabled>書けました</button>
-  <!-- 🚨 AIが書いた追い質問のときだけ出す（drawLog が出し入れする）。
-       定型文のときに出しても、押した先が同じ文なので何も変わらない。 -->
+  <!-- 🚨 追い質問が出ている間だけ出す（drawLog が出し入れする）。
+       押すたびに必ず問いが変わる。同じ文に戻して終わらせない。 -->
   <button id="offTarget" type="button" class="hidden">いまのは ちがいます</button>
   <!-- 🚨 掘り下げの間、ずっとここに出しておく（2026-08-24 の決定）。
        文字を打たせずに終われることが、重い問いを載せるための守り。
@@ -587,16 +587,32 @@ function appSays(text, kind) {
 function offTarget() {
   const last = session && session.turns[session.turns.length - 1];
   if (!last || last.who !== "アプリ" || last.kind.indexOf("追い質問:") !== 0) return;
-  const type = last.kind.slice("追い質問:".length).replace("(AI)", "");
-  const fu = FOLLOW_UPS.find((f) => f.type === type) || FOLLOW_UPS[0];
   // ⚠️ 印に残すのは**問いの行だけ。**受け取りの言葉（「ありがとうございます。」）は
   //    毎回同じで、外れたかどうかと関係が無い。改行が入ると読む用の文面が行の途中で割れる。
   const asked = last.text.split("\n").filter(Boolean).pop() || last.text;
   session.flags.push({ at: Date.now(), kind: "追い質問が的外れ", excerpt: asked });
-  last.text = fu.text;
-  last.kind = "追い質問:" + fu.type + "(的外れで差し替え)";
-  save();
-  drawLog();
+
+  // ① まず、同じ型の定型文に戻す。**AIの書きぶりだけが外れていた**場合はこれで足りる。
+  const type = last.kind.slice("追い質問:".length).split("(")[0];
+  const same = FOLLOW_UPS.find((f) => f.type === type);
+  if (same && same.text !== asked) {
+    last.text = same.text;
+    last.kind = "追い質問:" + same.type + "(的外れで差し替え)";
+    save(); drawLog(); return;
+  }
+
+  // ② 定型文でも外れている＝**聞いている中身のほうが外れている。型ごと替える。**
+  //    ⚠️ nextFollowUp は「母がまだ書いていないこと」を返す。順番では回さない。
+  const other = nextFollowUp(session);
+  if (other) {
+    session.askedTypes.push(other.type);
+    last.text = other.text;
+    last.kind = "追い質問:" + other.type + "(的外れで型を替えた)";
+    save(); drawLog(); return;
+  }
+
+  // ③ 聞ける型が無くなった。🚨 **引き延ばさない。**外れた問いを出し続けるより閉じる。
+  closeSession("的外れが続き、聞ける型が無くなった", WORDS.close);
 }
 
 function closeSession(reason, word) {
@@ -626,7 +642,7 @@ function drawLog() {
     log.appendChild(div);
   });
   const last = session.turns[session.turns.length - 1];
-  const canReject = !!last && last.who === "アプリ" && /^追い質問:.*\(AI\)$/.test(last.kind);
+  const canReject = !!last && last.who === "アプリ" && last.kind.indexOf("追い質問:") === 0;
   el("offTarget").classList.toggle("hidden", !canReject);
   el("input").value = "";
   el("send").disabled = true;
