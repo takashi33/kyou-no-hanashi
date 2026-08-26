@@ -592,27 +592,50 @@ function offTarget() {
   const asked = last.text.split("\n").filter(Boolean).pop() || last.text;
   session.flags.push({ at: Date.now(), kind: "追い質問が的外れ", excerpt: asked });
 
-  // ① まず、同じ型の定型文に戻す。**AIの書きぶりだけが外れていた**場合はこれで足りる。
-  const type = last.kind.slice("追い質問:".length).split("(")[0];
-  const same = FOLLOW_UPS.find((f) => f.type === type);
-  if (same && same.text !== asked) {
-    last.text = same.text;
-    last.kind = "追い質問:" + same.type + "(的外れで差し替え)";
-    save(); drawLog(); return;
+  // 🚨 「同じ書き方をするな」とAIに伝えるために覚える（2026-08-26 の決定）。
+  // 🚨 **AIが書いた問いだけ。**定型文を「書くな」と伝えると、指示文の
+  //    「うまく言い換えられないときは見本をそのまま書く」と食い違う。
+  // 🚨 **その回のあいだだけ。**次の回へ持ち越さない。
+  //    ⚠️ AIが書いた問いには**母の言葉が入っている**（それが狙い）。持ち越すと、
+  //       前の回の母の言葉が、あとの回でもGroqへ渡ることになる。
+  //       その回のうちなら、その回の発言はもともと渡している＝**外に出る範囲が広がらない。**
+  if (last.kind.slice(-4) === "(AI)") {
+    session.rejected = (session.rejected || []).concat(asked);
   }
 
-  // ② 定型文でも外れている＝**聞いている中身のほうが外れている。型ごと替える。**
-  //    ⚠️ nextFollowUp は「母がまだ書いていないこと」を返す。順番では回さない。
+  // 🚨 定型文で済ませない。**別の型を、母の言葉に合わせてAIに書かせる**（2026-08-26 の決定）。
+  // 🚨 替えるのは**何をたずねるか**であって、言い回しではない。
+  //    ⚠️ 同じ型のまま言い換えさせると**日本語が悪くなる**（2026-08-26 実測。
+  //       「どこで半纏を買いましたか」→「どこに半纏を買いましたか」→
+  //       「どこにその半纏を手に入れましたか」と、押すほど不自然になった）。
+  // ⚠️ nextFollowUp は「母がまだ書いていないこと」を返す。順番では回さない。
   const other = nextFollowUp(session);
-  if (other) {
-    session.askedTypes.push(other.type);
-    last.text = other.text;
-    last.kind = "追い質問:" + other.type + "(的外れで型を替えた)";
-    save(); drawLog(); return;
+  if (!other) {
+    // 🚨 聞ける型が無くなった。**引き延ばさない。**外れた問いを出し続けるより閉じる。
+    save();
+    closeSession("的外れが続き、聞ける型が無くなった", WORDS.close);
+    return;
   }
+  session.askedTypes.push(other.type);
+  save();
 
-  // ③ 聞ける型が無くなった。🚨 **引き延ばさない。**外れた問いを出し続けるより閉じる。
-  closeSession("的外れが続き、聞ける型が無くなった", WORDS.close);
+  // ⚠️ 待っている間、**問いは動かさない。**二度変わると母が戸惑う。
+  //    代わりにボタンの字を変える。書けなければ定型文に落ちる（askPc がそうする）。
+  const btn = el("offTarget");
+  btn.disabled = true;
+  btn.textContent = "聞き直しています…";
+  const here = session;
+  askPc(here, other).then((r) => {
+    btn.disabled = false;
+    btn.textContent = "いまのは ちがいます";
+    if (here.endedAt) return;                    // 待っている間に母が閉じた
+    const t = here.turns[here.turns.length - 1];
+    if (!t || t.who !== "アプリ") return;
+    t.text = r.text;
+    t.kind = "追い質問:" + other.type + (r.byAI ? "(AI)" : "");
+    save();
+    drawLog();
+  });
 }
 
 function closeSession(reason, word) {
@@ -764,7 +787,9 @@ function askPc(s, fu) {
   return fetch(cfg.url.replace(/\/+$/, "") + "/ask", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ key: cfg.key, said, types: [fu.type], sample: fu.text }),
+    // ⚠️ avoid は**その回で「ちがう」と言われた問いだけ。**多く送っても効かないので5つまで。
+    body: JSON.stringify({ key: cfg.key, said, types: [fu.type], sample: fu.text,
+                           avoid: (s.rejected || []).slice(-5) }),
     signal: stop.signal,
   })
     .then((res) => (res.ok ? res.json() : null))
