@@ -61,6 +61,8 @@
   .q:active { background: #f2ead9; }
 
   /* 自分から話したいとき。問いではないので、見た目を弱くして下に置く。 */
+  /* ほかの問いに替える。問いではないので、#freeStart と同じ弱さにして下に置く。 */
+  #swapQ,
   #freeStart {
     display: block; width: 100%; margin-top: 26px;
     background: none; border: none; border-bottom: 1px solid var(--line);
@@ -144,6 +146,7 @@
        終われることの説明は、話す画面の終了ボタンの下にだけ置く。 -->
   <h1>どれか ひとつ、聞かせてください。</h1>
   <div id="qList"></div>
+  <button id="swapQ" type="button">ほかの ことを 聞いてください</button>
   <button id="freeStart" type="button">じぶんから 話したいことがあります</button>
 </main>
 
@@ -574,6 +577,13 @@ function closeSession(reason, word) {
   save();
   el("closingWord").textContent = word;
   show("closed");
+  // 🚨 閉じたその場でPCへ送る（2026-08-26 の決定）。**閉じ方を問わず全部ここを通る。**
+  //    ⚠️ 母には何も見せない。失敗しても画面に出さない（sendToPc がそういう作り）。
+  //       届かなければ、次に開いたときにまた送られる。
+  //    ⚠️ これが無いと、アプリを閉じずに置いたままショートカットを押しても送信が走らない
+  //       （Androidが画面を復帰させるだけで「起動」にならず、boot() が呼ばれないため）。
+  //    ⚠️ 閉じの言葉を先に出してから送る。母の画面を待たせない。
+  setTimeout(() => { sendToPc(); }, 300);
 }
 
 // ── 会話の描画 ─────────────────────────────────────────
@@ -677,7 +687,46 @@ function onSend() {
   session.askedTypes.push(fu.type);
   session.askedCount += 1;
   save();
-  appSays(WORDS.receipt + "\n" + fu.text, "追い質問:" + fu.type);
+
+  // 🚨 まずPCに書いてもらう。書けなければ、その型の定型文に落ちる。
+  //    悪くなる方向は「その日の追い質問が定型文になる」だけ（設計 §3-4）。
+  const here = session;
+  askPc(here, fu).then((r) => {
+    if (here.endedAt) return;                    // 待っている間に母が閉じた
+    appSays(WORDS.receipt + "\n" + r.text, "追い質問:" + fu.type + (r.byAI ? "(AI)" : ""));
+  });
+}
+
+// ── 追い質問をPCに書いてもらう（設計 §3-4）────────────────
+// 🚨 **アプリから外のAIを直接呼ばない。**このファイルは公開されているので、
+//    鍵を置いた瞬間に誰でも使える鍵になる。**鍵は息子のPCの中だけ。**
+// 🚨 渡すのは**この回の母の発言だけ。**年齢・病歴・家族構成は渡さない。
+// ⚠️ 待たせすぎない。5秒で諦めて定型文にする。
+// ⚠️ 返ってきた文も、出す前に必ず関門を通す（appSays が通す）。
+function askPc(s, fu) {
+  const cfg = store.sync || {};
+  const fallback = { text: fu.text, byAI: false };
+  if (!cfg.url || !cfg.key) return Promise.resolve(fallback);
+
+  const said = s.turns.filter((t) => t.who === "母").map((t) => t.text).join("\n");
+  if (!said) return Promise.resolve(fallback);
+
+  const stop = new AbortController();
+  const timer = setTimeout(() => stop.abort(), 5000);
+
+  return fetch(cfg.url.replace(/\/+$/, "") + "/ask", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key: cfg.key, said, types: [fu.type], sample: fu.text }),
+    signal: stop.signal,
+  })
+    .then((res) => (res.ok ? res.json() : null))
+    .then((r) => {
+      clearTimeout(timer);
+      if (!r || !r.ok || !r.text || !passesFilter(r.text)) return fallback;
+      return { text: r.text, byAI: true };
+    })
+    .catch(() => { clearTimeout(timer); return fallback; });
 }
 
 // ── 起動 ───────────────────────────────────────────────
@@ -740,6 +789,38 @@ function boot() {
   setTimeout(() => { sendToPc(); }, 1200);
 }
 
+// 🚨 3つとも、いまは答えたくない日がある（2026-08-26 の決定）。
+//    そのまま閉じさせるのが、いちばんもったいない終わり方。
+// 🚨 流した問いは**在庫に戻す。別の日にまた出る。**
+//    ⚠️ ここで seen（見た回数）を増やさないこと。増やすと、気分で流しただけの問いが
+//       引っ込んでしまう。「はじめてお給料をもらった日」のような大事な問いを、
+//       一度の気分で失わせない（2026-08-26 の決定）。
+// ⚠️ 何回でも押せる。在庫が尽きた枠は、そのまま残す。**空にして母を困らせない。**
+// ⚠️ **この場で流したものを覚えておく**（アプリを開き直すまで。控えには残さない）。
+//    いま出ている3つを避けるだけだと、**2組の間を行ったり来たりするだけ**になる
+//    （2026-08-26、実際にそうなった）。
+const skippedNow = new Set();
+
+function swapSlots() {
+  SLOTS.forEach((slot) => { if (store.slots[slot]) skippedNow.add(store.slots[slot]); });
+  SLOTS.forEach((slot) => {
+    let cands = store.questions.filter(
+      (q) => q.slot === slot && !q.retired && !q.used && !skippedNow.has(q.id));
+    if (!cands.length) {
+      // この枠は在庫を一周した。**その枠ぶんだけ**忘れて、また最初から回す。
+      store.questions.forEach((q) => { if (q.slot === slot) skippedNow.delete(q.id); });
+      cands = store.questions.filter(
+        (q) => q.slot === slot && !q.retired && !q.used && q.id !== store.slots[slot]);
+    }
+    if (cands.length) { store.slots[slot] = cands[0].id; return; }
+    // それでも無い枠は、そのまま残す。**空にして母を困らせない。**
+    const alt = pickForSlot(slot);
+    if (alt) store.slots[slot] = alt;
+  });
+  save();
+  drawChoose();
+}
+
 function drawChoose() {
   const list = el("qList");
   list.innerHTML = "";
@@ -761,6 +842,7 @@ function drawChoose() {
   });
 }
 
+el("swapQ").addEventListener("click", () => { swapSlots(); window.scrollTo(0, 0); });
 el("freeStart").addEventListener("click", () => {
   startSession(null, true);
   show("talk");
