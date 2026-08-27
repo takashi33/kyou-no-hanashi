@@ -96,6 +96,18 @@
   .send:disabled { background: #c3b8a3; }
   .send:active { background: #63491f; }
 
+  /* 書きかけを消す前の確かめ。母の言葉が消えるかどうかの場面なので、はっきり出す。 */
+  #keepAsk {
+    margin-top: 18px; padding: 18px;
+    background: var(--card); border: 2px solid var(--accent); border-radius: 14px;
+  }
+  #keepWord { font-size: 1.2rem; line-height: 1.7; color: var(--ink); margin: 0 0 16px; }
+  #keepDrop {
+    display: block; width: 100%; margin-top: 12px;
+    background: none; border: none; color: #5d5245;
+    font-size: 1rem; font-family: inherit; padding: 10px 0;
+  }
+
   /* 追い質問が的外れだったとき。問いではないので #endLink と同じ弱さにする。 */
   #offTarget,
   #endLink {
@@ -170,6 +182,14 @@
        🚨 初回だけ出して消す作りにしない。**重くなった回にこそ要る。** -->
   <button id="endLink" type="button">おわりにする</button>
   <p id="endNote">途中でも終われます。</p>
+
+  <!-- 🚨 書きかけを残したまま「もどる」を押したときだけ出す。
+       押さなければ何も出ない。何も書いていなければ、いままでどおりすぐ戻る。 -->
+  <div id="keepAsk" class="hidden">
+    <p id="keepWord">書いたものが のこっています。<br>このまま もどると、きえます。</p>
+    <button id="keepWrite" class="send" type="button">書きつづける</button>
+    <button id="keepDrop" type="button">きえてもよい</button>
+  </div>
 </main>
 
 <!-- ③ 閉じる画面 -->
@@ -501,7 +521,55 @@ function show(which) {
 
 // ── 問いを選ぶ画面へ戻る ───────────────────────────────
 // 🚨 母が書いたものは、どの道を通っても消さない。
+// 🚨 まだ送っていない書きかけは、聞かずに捨てない（2026-08-27 依頼者の決定）。
+function 書きかけがある() {
+  return el("input").value.trim() !== "";
+}
+
+// 消してよいと言われたときに、続けてやること（もどる／おわる で違う）
+let 消してよければ = null;
+
+function 書きかけを聞く画面(出す, 言い方) {
+  if (出す && 言い方) el("keepWord").innerHTML = "書いたものが のこっています。<br>このまま " + 言い方 + "と、きえます。";
+  el("keepAsk").classList.toggle("hidden", !出す);
+  // 聞いている間は、ふだんの押す所を隠す。二重に押させない。
+  ["input", "send", "offTarget", "endLink", "endNote"].forEach((n) => {
+    const e = el(n);
+    if (!e) return;
+    // 🚨 戻すのは、こちらが隠したものだけ。もともと隠れていたもの（追い質問が
+    //    出ていないときの「いまのは ちがいます」）を、勝手に出してしまわない。
+    if (出す) { e.dataset.wasHidden = e.classList.contains("hidden") ? "1" : "0"; e.classList.add("hidden"); }
+    else if (e.dataset.wasHidden === "0") { e.classList.remove("hidden"); delete e.dataset.wasHidden; }
+  });
+  if (出す) el("keepWrite").focus();
+}
+
+// 話す画面で書きかけがあるときだけ聞く。それ以外はいままでどおり。
+function 聞いてから(行き先, 言い方) {
+  if (!el("talk").classList.contains("hidden") && 書きかけがある()) {
+    消してよければ = 行き先;
+    書きかけを聞く画面(true, 言い方);
+    return true;
+  }
+  return false;
+}
+
+function onBack() {
+  if (聞いてから(goBackToChoose, "もどる")) return;
+  goBackToChoose();
+}
+
+// 🚨 「おわりにする」も同じく一度聞く（2026-08-27 依頼者の決定）。
+//    ⚠️ ここは文字を打たずに終われるための出口。何も書いていなければ何も出さない。
+function onEnd() {
+  if (聞いてから(() => closeSession("母が閉じた", WORDS.stop), "おわる")) return;
+  closeSession("母が閉じた", WORDS.stop);
+}
+
 function goBackToChoose() {
+  書きかけを聞く画面(false);
+  el("input").value = "";        // ここを通ったら書きかけは無い（聞いたうえで捨てた）
+  el("send").disabled = true;
   if (session && !session.endedAt) {
     if (session.turns.some((t) => t.who === "母")) {
       // もう書いている。その回は**終わったものとして残す。**言葉は1つも捨てない。
@@ -931,10 +999,17 @@ el("input").addEventListener("input", () => {
   el("send").disabled = el("input").value.trim() === "";
 });
 el("send").addEventListener("click", onSend);
-el("endLink").addEventListener("click", () => {
-  closeSession("母が閉じた", WORDS.stop);
+el("endLink").addEventListener("click", onEnd);
+el("backBtn").addEventListener("click", onBack);
+el("keepWrite").addEventListener("click", () => { 消してよければ = null; 書きかけを聞く画面(false); el("input").focus(); });
+el("keepDrop").addEventListener("click", () => {
+  const 行き先 = 消してよければ;
+  消してよければ = null;
+  el("input").value = "";
+  el("send").disabled = true;
+  書きかけを聞く画面(false);
+  if (行き先) 行き先();
 });
-el("backBtn").addEventListener("click", goBackToChoose);
 
 // ── 息子用の取り出し（母には見せない）──────────────────
 // 入り口：画面のいちばん上の名前を5回続けて押す。または ?owner を付けて開く。
